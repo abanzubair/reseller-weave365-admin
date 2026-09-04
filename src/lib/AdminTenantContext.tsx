@@ -144,7 +144,7 @@ export function AdminTenantProvider({ children, user }: { children: React.ReactN
     if (tenant.custom_domain) {
       return `https://${tenant.custom_domain}`;
     }
-    const defaultBase = import.meta.env.VITE_DEFAULT_STORE_BASE_URL || 'http://localhost:3000';
+    const defaultBase = import.meta.env.VITE_DEFAULT_STORE_BASE_URL || 'https://weave365.com';
     return `${defaultBase}/${tenant.slug === '50k' ? '' : tenant.slug}`;
   };
 
