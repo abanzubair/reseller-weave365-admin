@@ -7,6 +7,7 @@ export interface BoutiqueTenant {
   store_name: string;
   custom_domain?: string;
   contact_whatsapp?: string;
+  whatsapp?: string;
   currency?: string;
   profit_margin_percent?: number;
   is_active: boolean;
@@ -16,11 +17,9 @@ export interface BoutiqueTenant {
 
 interface AdminTenantContextType {
   tenant: BoutiqueTenant | null;
-  tenantsList: BoutiqueTenant[];
   loading: boolean;
   user: any;
   refreshTenant: () => Promise<void>;
-  switchTenant: (slug: string) => void;
   claimTenant: (slug: string) => Promise<{ success: boolean; error?: string }>;
   getStorefrontUrl: () => string;
 }
@@ -29,58 +28,56 @@ const AdminTenantContext = createContext<AdminTenantContextType | undefined>(und
 
 export function AdminTenantProvider({ children, user }: { children: React.ReactNode; user: any }) {
   const [tenant, setTenant] = useState<BoutiqueTenant | null>(null);
-  const [tenantsList, setTenantsList] = useState<BoutiqueTenant[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchTenants = async () => {
+  const fetchTenant = async () => {
     if (!user?.id) {
       setLoading(false);
       return;
     }
     try {
       setLoading(true);
-      const { data, error } = await supabase
+
+      // 1. Query the single store owned by this user
+      const { data: ownedStore, error: ownedErr } = await supabase
         .from('boutique_tenants')
         .select('*')
-        .order('created_at', { ascending: false });
+        .eq('owner_id', user.id)
+        .maybeSingle();
 
-      if (error) throw error;
-      const list = (data || []) as BoutiqueTenant[];
-      setTenantsList(list);
+      if (ownedErr) throw ownedErr;
 
-      const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-      const queryStore = urlParams?.get('store');
-
-      const savedSlug = typeof window !== 'undefined' 
-        ? (queryStore || localStorage.getItem('weave365_reseller_active_slug')) 
-        : null;
-
-      let current = list.find((t) => t.slug === savedSlug);
-      if (!current) {
-        current = list.find((t) => t.owner_id === user.id);
-      }
-      if (!current && list.length > 0) {
-        current = list[0];
+      if (ownedStore) {
+        setTenant(ownedStore as BoutiqueTenant);
+        return;
       }
 
-      setTenant(current || null);
-      if (current && typeof window !== 'undefined') {
-        localStorage.setItem('weave365_reseller_active_slug', current.slug);
+      // 2. If no store is linked to this account yet, check if there is an unassigned store to bind
+      const { data: unownedStore, error: unownedErr } = await supabase
+        .from('boutique_tenants')
+        .select('*')
+        .is('owner_id', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (unownedErr) throw unownedErr;
+
+      if (unownedStore) {
+        // Automatically link this store to the authenticated reseller
+        await supabase
+          .from('boutique_tenants')
+          .update({ owner_id: user.id })
+          .eq('id', unownedStore.id);
+
+        setTenant({ ...unownedStore, owner_id: user.id } as BoutiqueTenant);
+      } else {
+        setTenant(null);
       }
     } catch (err) {
-      console.error('[AdminTenantContext] Error loading tenants:', err);
+      console.error('[AdminTenantContext] Error loading boutique tenant:', err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const switchTenant = (slug: string) => {
-    const target = tenantsList.find((t) => t.slug === slug);
-    if (target) {
-      setTenant(target);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('weave365_reseller_active_slug', target.slug);
-      }
     }
   };
 
@@ -89,6 +86,20 @@ export function AdminTenantProvider({ children, user }: { children: React.ReactN
     const cleanHandle = handle.toLowerCase().trim();
 
     try {
+      // Enforce strict 1 store per account rule
+      const { data: existingOwned } = await supabase
+        .from('boutique_tenants')
+        .select('id, store_name')
+        .eq('owner_id', user.id)
+        .maybeSingle();
+
+      if (existingOwned) {
+        return {
+          success: false,
+          error: `Your account is already linked to ${existingOwned.store_name}. Each account can only manage one boutique store.`,
+        };
+      }
+
       const { data: existing, error: fetchErr } = await supabase
         .from('boutique_tenants')
         .select('*')
@@ -98,6 +109,7 @@ export function AdminTenantProvider({ children, user }: { children: React.ReactN
       if (fetchErr) throw fetchErr;
 
       if (!existing) {
+        // Create new single store for this owner
         const { data: newTenant, error: insertErr } = await supabase
           .from('boutique_tenants')
           .insert({
@@ -111,13 +123,15 @@ export function AdminTenantProvider({ children, user }: { children: React.ReactN
 
         if (insertErr) throw insertErr;
         setTenant(newTenant as BoutiqueTenant);
-        setTenantsList((prev) => [newTenant as BoutiqueTenant, ...prev]);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('weave365_reseller_active_slug', newTenant.slug);
-        }
         return { success: true };
       }
 
+      // If store exists, check if already owned by someone else
+      if (existing.owner_id && existing.owner_id !== user.id) {
+        return { success: false, error: 'This boutique handle is already owned by another account.' };
+      }
+
+      // Claim and lock to this user account
       const { data: updatedTenant, error: updateErr } = await supabase
         .from('boutique_tenants')
         .update({ owner_id: user.id })
@@ -127,12 +141,6 @@ export function AdminTenantProvider({ children, user }: { children: React.ReactN
 
       if (updateErr) throw updateErr;
       setTenant(updatedTenant as BoutiqueTenant);
-      setTenantsList((prev) =>
-        prev.map((t) => (t.id === updatedTenant.id ? (updatedTenant as BoutiqueTenant) : t))
-      );
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('weave365_reseller_active_slug', updatedTenant.slug);
-      }
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'Failed to claim boutique' };
@@ -144,23 +152,21 @@ export function AdminTenantProvider({ children, user }: { children: React.ReactN
     if (tenant.custom_domain) {
       return `https://${tenant.custom_domain}`;
     }
-    const defaultBase = import.meta.env.VITE_DEFAULT_STORE_BASE_URL || 'https://weave365.com';
-    return `${defaultBase}/${tenant.slug === '50k' ? '' : tenant.slug}`;
+    const defaultBase = import.meta.env.VITE_DEFAULT_STORE_BASE_URL || 'https://www.weave365.com';
+    return `${defaultBase}/store/${tenant.slug}`;
   };
 
   useEffect(() => {
-    fetchTenants();
+    fetchTenant();
   }, [user?.id]);
 
   return (
     <AdminTenantContext.Provider
       value={{
         tenant,
-        tenantsList,
         loading,
         user,
-        refreshTenant: fetchTenants,
-        switchTenant,
+        refreshTenant: fetchTenant,
         claimTenant,
         getStorefrontUrl,
       }}
