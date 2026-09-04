@@ -13,7 +13,6 @@ import {
   Palette,
   ShieldCheck,
   MessageCircle,
-  Eye,
   RefreshCw,
   Sliders,
   Compass,
@@ -246,7 +245,7 @@ export default function Customize() {
   const storefrontUrl = getStorefrontUrl();
 
   return (
-    <div className="max-w-6xl mx-auto space-y-7 pb-12">
+    <div className="max-w-4xl mx-auto space-y-7 pb-12">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-zinc-200 dark:border-white/[0.07]">
         <div>
@@ -339,10 +338,8 @@ export default function Customize() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-7">
-        {/* Left / Main Configuration Column */}
-        <div className="lg:col-span-7 space-y-6">
-          {/* TAB 1: HERO CONFIGURATION */}
+      <div className="space-y-6">
+        {/* TAB 1: HERO CONFIGURATION */}
           {activeTab === 'hero' && (
             <div className="space-y-6">
               {/* Media Type Switcher */}
@@ -917,174 +914,6 @@ export default function Customize() {
               </div>
             </div>
           )}
-        </div>
-
-        {/* Right Column: Live Interactive Storefront Mockup Preview */}
-        <div className="lg:col-span-5 space-y-4">
-          <div className="sticky top-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 flex items-center space-x-1.5">
-                <Eye size={14} className="text-amber-500" />
-                <span>Live Viewport Preview</span>
-              </span>
-              <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-400">
-                Synchronized
-              </span>
-            </div>
-
-            {/* Mockup Frame */}
-            <div className="rounded-2xl overflow-hidden border border-zinc-300 dark:border-white/[0.12] bg-zinc-950 shadow-2xl">
-              {/* Browser bar */}
-              <div className="px-3.5 py-2 bg-zinc-900 border-b border-white/[0.08] flex items-center justify-between">
-                <div className="flex items-center space-x-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-rose-500/80" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500/80" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
-                </div>
-                <div className="text-[10px] font-mono text-zinc-400 truncate max-w-[200px]">
-                  {tenant?.slug}.weave365.com
-                </div>
-                <div className="w-8" />
-              </div>
-
-              {/* Mock Storefront Container */}
-              <div className="relative bg-zinc-900 text-white min-h-[460px] flex flex-col justify-between select-none">
-                {/* 1. Announcement bar */}
-                {announcement.enabled && announcement.text && (
-                  <div
-                    className="text-[10px] text-center py-1.5 px-3 font-medium tracking-wide truncate border-b border-white/10"
-                    style={{ backgroundColor: accentColor, color: '#ffffff' }}
-                  >
-                    {announcement.text}
-                  </div>
-                )}
-
-                {/* 2. Mock Header */}
-                <div className="px-4 py-3 bg-zinc-950/80 backdrop-blur-md border-b border-white/10 flex items-center justify-between z-10">
-                  <div className="flex items-center space-x-2">
-                    <div
-                      className="w-6 h-6 rounded-md flex items-center justify-center font-bold text-xs"
-                      style={{ backgroundColor: accentColor, color: '#ffffff' }}
-                    >
-                      {tenant?.store_name?.[0] || 'W'}
-                    </div>
-                    <span className="font-semibold text-xs tracking-tight text-white truncate max-w-[110px]">
-                      {tenant?.store_name || 'Boutique Store'}
-                    </span>
-                  </div>
-
-                  {/* Active Nav links in mini preview */}
-                  <div className="hidden sm:flex items-center space-x-2.5 text-[11px] text-zinc-300">
-                    {navLinks
-                      .filter((l) => l.is_active)
-                      .slice(0, 3)
-                      .map((l) => (
-                        <span key={l.id} className="hover:text-white cursor-pointer">
-                          {l.label}
-                        </span>
-                      ))}
-                  </div>
-
-                  <div
-                    className="px-2 py-0.5 rounded text-[10px] font-semibold"
-                    style={{ backgroundColor: `${accentColor}33`, color: accentColor }}
-                  >
-                    Catalog
-                  </div>
-                </div>
-
-                {/* 3. Hero Visual Container */}
-                <div className="relative flex-1 flex flex-col justify-center items-center text-center px-4 py-10 overflow-hidden">
-                  {/* Media background */}
-                  {hero.type === 'video' && hero.url ? (
-                    <video
-                      key={hero.url}
-                      src={hero.url}
-                      poster={hero.poster_url}
-                      autoPlay
-                      loop
-                      muted
-                      playsInline
-                      className="absolute inset-0 w-full h-full object-cover opacity-45 pointer-events-none"
-                    />
-                  ) : hero.url ? (
-                    <img
-                      key={hero.url}
-                      src={hero.url}
-                      alt="Hero background"
-                      className="absolute inset-0 w-full h-full object-cover opacity-40 pointer-events-none"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 bg-gradient-to-br from-amber-950/40 to-zinc-950" />
-                  )}
-
-                  {/* Luxury radial gradient overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/50 to-zinc-950/80" />
-
-                  {/* Hero Copy overlay */}
-                  <div className="relative z-10 max-w-sm space-y-2.5">
-                    {hero.badge && (
-                      <div className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-medium tracking-wide uppercase bg-white/10 backdrop-blur-sm border border-white/20 text-amber-300">
-                        {hero.badge}
-                      </div>
-                    )}
-
-                    <h3 className="text-base font-bold text-white tracking-tight leading-snug">
-                      {hero.headline || 'Luxury Handloom Sarees'}
-                    </h3>
-
-                    <p className="text-[11px] text-zinc-300 line-clamp-2 leading-relaxed">
-                      {hero.subtitle || 'Direct from the sacred weaving pitlooms of Varanasi.'}
-                    </p>
-
-                    {/* CTAs */}
-                    <div className="flex items-center justify-center space-x-2 pt-1">
-                      {hero.primary_cta_text && (
-                        <span
-                          className="px-3 py-1.5 rounded-lg text-[11px] font-semibold shadow-md text-white"
-                          style={{ backgroundColor: accentColor }}
-                        >
-                          {hero.primary_cta_text}
-                        </span>
-                      )}
-                      {hero.secondary_cta_text && (
-                        <span className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-white/30 text-white bg-white/5">
-                          {hero.secondary_cta_text}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* 4. Authenticity badging footer preview */}
-                <div className="px-3 py-2 bg-zinc-950/90 border-t border-white/10 text-[10px] text-zinc-400 flex items-center justify-around z-10">
-                  {trustBadges.show_silk_mark && (
-                    <span className="flex items-center space-x-1">
-                      <Check size={10} className="text-emerald-400" />
-                      <span>Silk Mark</span>
-                    </span>
-                  )}
-                  {trustBadges.show_tested_zari && (
-                    <span className="flex items-center space-x-1">
-                      <Check size={10} className="text-emerald-400" />
-                      <span>Tested Zari</span>
-                    </span>
-                  )}
-                  {trustBadges.show_handloom_certified && (
-                    <span className="flex items-center space-x-1">
-                      <Check size={10} className="text-emerald-400" />
-                      <span>Handloom Certified</span>
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-3 p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-900 dark:text-amber-200">
-              <span className="font-semibold">Boutique Architecture:</span> When you click "Publish", these settings are instantly distributed across all your active customer-facing storefront templates.
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
