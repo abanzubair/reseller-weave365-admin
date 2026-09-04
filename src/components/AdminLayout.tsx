@@ -13,6 +13,7 @@ import {
   Store,
   Sun,
   Moon,
+  Palette,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { AdminTenantProvider, useAdminTenant } from '../lib/AdminTenantContext';
@@ -33,6 +34,7 @@ function AdminShell() {
     { label: 'Overview', path: '/', icon: LayoutDashboard },
     { label: 'Catalog & Markups', path: '/products', icon: Package },
     { label: 'Orders & Inquiries', path: '/orders', icon: ShoppingBag },
+    { label: 'Customize Store', path: '/customize', icon: Palette },
     { label: 'Store Settings', path: '/settings', icon: Settings },
   ];
 

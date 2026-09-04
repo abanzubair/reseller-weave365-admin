@@ -1,10 +1,60 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from './supabase';
 
+export interface StorefrontNavLink {
+  id: string;
+  label: string;
+  url: string;
+  is_active: boolean;
+  is_external?: boolean;
+}
+
+export interface StorefrontHero {
+  type: 'image' | 'video';
+  url: string;
+  poster_url?: string;
+  headline?: string;
+  badge?: string;
+  subtitle?: string;
+  primary_cta_text?: string;
+  primary_cta_link?: string;
+  secondary_cta_text?: string;
+  secondary_cta_link?: string;
+}
+
+export interface StorefrontAnnouncement {
+  enabled: boolean;
+  text: string;
+  link?: string;
+}
+
+export interface StorefrontTrustBadges {
+  show_silk_mark: boolean;
+  show_tested_zari: boolean;
+  show_handloom_certified: boolean;
+  show_direct_artisan: boolean;
+}
+
+export interface StorefrontConfig {
+  reseller_id?: string;
+  hero?: StorefrontHero;
+  nav_links?: StorefrontNavLink[];
+  announcement?: StorefrontAnnouncement;
+  accent_color?: string;
+  trust_badges?: StorefrontTrustBadges;
+  whatsapp_greeting?: string;
+}
+
 export interface BoutiqueTenant {
   id: string;
   slug: string;
   store_name: string;
+  tagline?: string;
+  logo_url?: string;
+  banner_url?: string;
+  theme_color?: string;
+  accent_color?: string;
+  about_text?: string;
   custom_domain?: string;
   contact_whatsapp?: string;
   whatsapp?: string;
@@ -13,6 +63,20 @@ export interface BoutiqueTenant {
   is_active: boolean;
   owner_id?: string;
   created_at?: string;
+  config?: StorefrontConfig;
+}
+
+export function parseStorefrontConfig(aboutText?: string | null): StorefrontConfig {
+  if (!aboutText) return {};
+  try {
+    const parsed = JSON.parse(aboutText);
+    if (typeof parsed === 'object' && parsed !== null) {
+      return parsed as StorefrontConfig;
+    }
+  } catch (e) {
+    // plain string fallback
+  }
+  return {};
 }
 
 interface AdminTenantContextType {
@@ -22,6 +86,7 @@ interface AdminTenantContextType {
   refreshTenant: () => Promise<void>;
   claimTenant: (slug: string) => Promise<{ success: boolean; error?: string }>;
   getStorefrontUrl: () => string;
+  updateStorefrontConfig: (newConfig: StorefrontConfig) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AdminTenantContext = createContext<AdminTenantContextType | undefined>(undefined);
@@ -48,7 +113,10 @@ export function AdminTenantProvider({ children, user }: { children: React.ReactN
       if (ownedErr) throw ownedErr;
 
       if (ownedStore) {
-        setTenant(ownedStore as BoutiqueTenant);
+        setTenant({
+          ...ownedStore,
+          config: parseStorefrontConfig(ownedStore.about_text),
+        } as BoutiqueTenant);
         return;
       }
 
@@ -70,7 +138,11 @@ export function AdminTenantProvider({ children, user }: { children: React.ReactN
           .update({ owner_id: user.id })
           .eq('id', unownedStore.id);
 
-        setTenant({ ...unownedStore, owner_id: user.id } as BoutiqueTenant);
+        setTenant({
+          ...unownedStore,
+          owner_id: user.id,
+          config: parseStorefrontConfig(unownedStore.about_text),
+        } as BoutiqueTenant);
       } else {
         setTenant(null);
       }
@@ -78,6 +150,51 @@ export function AdminTenantProvider({ children, user }: { children: React.ReactN
       console.error('[AdminTenantContext] Error loading boutique tenant:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const updateStorefrontConfig = async (newConfig: StorefrontConfig): Promise<{ success: boolean; error?: string }> => {
+    if (!tenant?.id) return { success: false, error: 'No boutique tenant found to update.' };
+
+    try {
+      // Safely preserve any existing fields in about_text, especially reseller_id
+      const currentParsed = parseStorefrontConfig(tenant.about_text);
+      const mergedConfig: StorefrontConfig = {
+        ...currentParsed,
+        ...newConfig,
+      };
+
+      if (currentParsed.reseller_id && !mergedConfig.reseller_id) {
+        mergedConfig.reseller_id = currentParsed.reseller_id;
+      }
+
+      const updatePayload: Record<string, any> = {
+        about_text: JSON.stringify(mergedConfig),
+      };
+
+      // Also synchronize standard columns if provided
+      if (mergedConfig.hero?.url) {
+        updatePayload.banner_url = mergedConfig.hero.url;
+      }
+      if (mergedConfig.hero?.subtitle) {
+        updatePayload.tagline = mergedConfig.hero.subtitle;
+      }
+      if (mergedConfig.accent_color) {
+        updatePayload.accent_color = mergedConfig.accent_color;
+      }
+
+      const { error: updateErr } = await supabase
+        .from('boutique_tenants')
+        .update(updatePayload)
+        .eq('id', tenant.id);
+
+      if (updateErr) throw updateErr;
+
+      await fetchTenant();
+      return { success: true };
+    } catch (err: any) {
+      console.error('[AdminTenantContext] updateStorefrontConfig error:', err);
+      return { success: false, error: err.message || 'Failed to update storefront configuration' };
     }
   };
 
@@ -169,6 +286,7 @@ export function AdminTenantProvider({ children, user }: { children: React.ReactN
         refreshTenant: fetchTenant,
         claimTenant,
         getStorefrontUrl,
+        updateStorefrontConfig,
       }}
     >
       {children}

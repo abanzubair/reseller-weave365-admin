@@ -33,7 +33,7 @@ export default function Dashboard() {
 
         const { data: products } = await supabase
           .from('boutique_products')
-          .select('id, is_published')
+          .select('id, is_published, sku, title, retail_price, base_price, images')
           .eq('tenant_id', tenant.id);
 
         const { data: orders } = await supabase
@@ -62,10 +62,11 @@ export default function Dashboard() {
             const mapped = inq.map(iq => ({
               id: iq.id,
               customer_name: iq.customer_name,
+              customer_phone: iq.customer_phone,
               product_title: iq.product_title || (iq.sku ? `SKU: ${iq.sku}` : 'Catalog Inquiry'),
+              sku: iq.sku || null,
               status: iq.status || 'Inquiry on WhatsApp',
-              total_price: 0,
-              total_amount: 0,
+              notes: iq.message || iq.subject || 'Storefront Inquiry',
               created_at: iq.created_at,
             }));
             combinedRecent = [...combinedRecent, ...mapped].sort(
@@ -74,13 +75,54 @@ export default function Dashboard() {
           }
         } catch (_) {}
 
+        // Hydrate recent orders with images, SKU, and Weave365 links
+        const enrichedRecent = combinedRecent.map((order) => {
+          const extractedSku = 
+            order.sku || 
+            order.items?.[0]?.sku || 
+            order.notes?.match(/SKU:\s*([A-Za-z0-9_-]+)/i)?.[1] || 
+            '';
+
+          const matchedProd = products?.find((p) => 
+            (extractedSku && String(p.sku).toLowerCase().trim() === String(extractedSku).toLowerCase().trim()) ||
+            (order.product_title && p.title.toLowerCase().trim() === order.product_title.toLowerCase().trim())
+          );
+
+          const finalSku = extractedSku || matchedProd?.sku || '';
+          const phoneFromNote = order.notes?.match(/(?:Buyer WhatsApp|WhatsApp):\s*([+0-9\s-]+)/i)?.[1]?.trim() || '';
+          const customerPhone = order.customer_phone || phoneFromNote || '';
+          const imageUrl = 
+            (matchedProd?.images && matchedProd.images.length > 0 ? matchedProd.images[0] : null) ||
+            order.items?.[0]?.image ||
+            null;
+
+          const firstDigit = finalSku.trim().charAt(0);
+          const categorySlug = firstDigit === '2' ? 'suit' : firstDigit === '3' ? 'dupatta' : firstDigit === '4' ? 'lehenga' : 'saree';
+          const weave365Url = finalSku ? `https://www.weave365.com/${categorySlug}/${finalSku}` : 'https://www.weave365.com/catalogue';
+
+          const pPrice = 
+            ((order.total_amount ?? order.total_price) || 0) > 0 
+              ? (order.total_amount ?? order.total_price)
+              : (matchedProd?.retail_price || matchedProd?.base_price || 0);
+
+          return {
+            ...order,
+            sku: finalSku,
+            image_url: imageUrl,
+            weave365_url: weave365Url,
+            total_price: pPrice,
+            customer_phone: customerPhone,
+            total_amount: pPrice,
+          };
+        });
+
         setStats({
           totalProducts: products?.length || 0,
           activeListings: activeCount,
           totalOrders: totalOrdersCount,
           inquiries: inquiryCount,
         });
-        setRecentOrders(combinedRecent);
+        setRecentOrders(enrichedRecent);
       } catch (err) {
         console.error('[Dashboard] Error fetching data:', err);
       } finally {
@@ -219,36 +261,102 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="divide-y divide-zinc-200 dark:divide-white/[0.06]">
-            {recentOrders.map((order) => (
-              <div
-                key={order.id}
-                className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-zinc-50/80 dark:hover:bg-white/[0.015] transition-colors"
-              >
-                <div className="space-y-1.5">
-                  <div className="flex items-center space-x-3">
-                    <span className="font-semibold text-base text-zinc-900 dark:text-zinc-200">
-                      {order.customer_name || 'Valued Patron'}
-                    </span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-white/[0.05] text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-white/[0.1]">
-                      {order.status || 'New'}
-                    </span>
-                  </div>
-                  <div className="text-xs text-zinc-600 dark:text-zinc-300 line-clamp-1">{order.product_title}</div>
-                </div>
+            {recentOrders.map((order) => {
+              const buyerPhoneClean = order.customer_phone ? order.customer_phone.replace(/[^0-9]/g, '') : null;
 
-                <div className="flex items-center space-x-5">
-                  <div className="text-right">
-                    <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 tabular-nums">
-                      {tenant?.currency || '₹'}
-                      {((order.total_amount ?? order.total_price) || 0).toLocaleString()}
+              return (
+                <div
+                  key={order.id}
+                  className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-zinc-50/80 dark:hover:bg-white/[0.015] transition-colors group"
+                >
+                  <div className="flex items-start sm:items-center gap-4 min-w-0">
+                    <a
+                      href={order.weave365_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="relative shrink-0 block"
+                      title="View on Weave365"
+                    >
+                      {order.image_url ? (
+                        <div className="relative w-16 h-22 sm:w-20 sm:h-28 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-zinc-200/90 dark:border-white/[0.08] shadow-xs group/img">
+                          <img
+                            src={order.image_url}
+                            alt={order.product_title || 'Saree'}
+                            className="w-full h-full object-cover object-top transition-transform duration-500 group-hover/img:scale-105"
+                          />
+                          <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover/img:opacity-100">
+                            <ExternalLink size={13} className="text-white drop-shadow-md" />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-16 h-22 sm:w-20 sm:h-28 rounded-xl bg-zinc-100 dark:bg-white/[0.03] border border-zinc-200 dark:border-white/[0.08] flex flex-col items-center justify-center text-zinc-400 gap-1">
+                          <ShoppingBag size={16} />
+                          <span className="text-[9px] uppercase font-mono text-zinc-400">Catalog</span>
+                        </div>
+                      )}
+                    </a>
+
+                    <div className="space-y-1.5 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <a
+                          href={order.weave365_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold text-base text-zinc-900 dark:text-zinc-100 hover:text-amber-600 dark:hover:text-amber-400 transition-colors inline-flex items-center gap-1 group/title"
+                          title="View on Weave365"
+                        >
+                          <span className="line-clamp-1">{order.product_title || 'Boutique Saree'}</span>
+                          <ExternalLink size={12} className="text-zinc-400 group-hover/title:text-amber-600 dark:group-hover/title:text-amber-400 shrink-0" />
+                        </a>
+
+                        {order.sku && (
+                          <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20 font-semibold shrink-0">
+                            SKU: {order.sku}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                        <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                          {order.customer_name || 'Valued Patron'}
+                        </span>
+                        <span className="text-zinc-300 dark:text-zinc-700">•</span>
+                        <span>{new Date(order.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                      </div>
+
+                      {buyerPhoneClean && (
+                        <div className="pt-0.5">
+                          <a
+                            href={`https://wa.me/${buyerPhoneClean}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:underline font-medium"
+                          >
+                            <MessageCircle size={13} />
+                            <span>WhatsApp: {order.customer_phone}</span>
+                          </a>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">
-                      {new Date(order.created_at).toLocaleDateString()}
+                  </div>
+
+                  <div className="flex items-center justify-between sm:justify-end gap-5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-200 dark:border-white/[0.06]">
+                    <div className="text-left sm:text-right">
+                      <div className="text-base font-bold text-zinc-900 dark:text-zinc-100 tabular-nums">
+                        {((order.total_amount ?? order.total_price) || 0) > 0 ? (
+                          `${tenant?.currency || '₹'}${((order.total_amount ?? order.total_price) || 0).toLocaleString()}`
+                        ) : (
+                          <span className="text-xs text-zinc-400 font-normal">Inquiry</span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                        {order.status || 'Inquiry on WhatsApp'}
+                      </span>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
